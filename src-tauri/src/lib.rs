@@ -71,11 +71,15 @@ async fn ping_host(host: String, timeout_ms: u64) -> PingOutcome {
 }
 
 /// Opens a native save dialog and writes the generated PDF to the chosen path.
+fn decode_pdf_payload(data_base64: &str) -> Result<Vec<u8>, String> {
+    base64::engine::general_purpose::STANDARD
+        .decode(data_base64.as_bytes())
+        .map_err(|error| format!("Invalid PDF payload: {error}"))
+}
+
 #[tauri::command]
 async fn save_pdf(default_name: String, data_base64: String) -> Result<Option<String>, String> {
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(data_base64.as_bytes())
-        .map_err(|error| format!("Invalid PDF payload: {error}"))?;
+    let bytes = decode_pdf_payload(&data_base64)?;
 
     let file = rfd::AsyncFileDialog::new()
         .set_file_name(&default_name)
@@ -121,5 +125,12 @@ mod tests {
         let outcome = probe("ping-monitor.invalid", 500);
         assert!(!outcome.ok);
         assert!(outcome.error.is_some());
+    }
+
+    #[test]
+    fn decodes_pdf_payload() {
+        let encoded = base64::engine::general_purpose::STANDARD.encode(b"%PDF-1.4 sample");
+        assert_eq!(decode_pdf_payload(&encoded).unwrap(), b"%PDF-1.4 sample");
+        assert!(decode_pdf_payload("not base64 !!!").is_err());
     }
 }

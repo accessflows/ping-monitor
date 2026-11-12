@@ -36,6 +36,17 @@ pnpm tauri:dev        # desktop app with hot reload (real ICMP pings)
 pnpm dev              # browser-only UI (pings are simulated, same local database)
 ```
 
+> The Vite dev server (`localhost:5173`) and the packaged app (`tauri.localhost`) are different
+> webview origins, so each keeps its own local database. Data created while running `pnpm tauri:dev`
+> is not visible in an installed build.
+
+## Tests
+
+```bash
+pnpm typecheck                    # TypeScript
+cd src-tauri && cargo test        # Rust: host resolution, ICMP probe, PDF payload
+```
+
 ## Build
 
 ```bash
