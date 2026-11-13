@@ -174,7 +174,8 @@ jobs:
           fi
 
           # Record which updater platform key this build feeds into latest.json.
-          echo "$UPDATER_PLATFORM" > "$out/.updater-platform"
+          # (A hidden file would be skipped by actions/upload-artifact.)
+          echo "$UPDATER_PLATFORM" > "$out/updater-platform.txt"
           echo "Artifacts for $ARTIFACT:"
           ls -la "$out"
 
@@ -214,7 +215,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          find artifacts -type f ! -name '.updater-platform' -exec cp {} release-assets/ \;
+          find artifacts -type f ! -name 'updater-platform.txt' -exec cp {} release-assets/ \;
           cp latest.json release-assets/latest.json
           ls -la release-assets
 

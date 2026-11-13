@@ -1,6 +1,6 @@
 // Assembles the Tauri updater manifest (latest.json) from the downloaded CI artifacts.
 //
-// Each build job writes a `.updater-platform` marker file next to its bundles, which
+// Each build job writes an `updater-platform.txt` marker file next to its bundles, which
 // maps a build to its updater platform key (e.g. windows-x86_64, darwin-aarch64).
 //
 // Required env: VERSION, REPOSITORY (owner/name), TAG, OUTPUT (default latest.json)
@@ -28,6 +28,8 @@ const UPDATER_ASSET = {
   linux: (name) => name.endsWith(".AppImage") || name.endsWith(".AppImage.tar.gz"),
 };
 
+const PLATFORM_MARKER = "updater-platform.txt";
+
 const findPlatformDirs = () => {
   if (!fs.existsSync(ARTIFACTS_DIR)) return [];
   return fs
@@ -43,7 +45,7 @@ const platforms = {};
 const problems = [];
 
 for (const dir of findPlatformDirs()) {
-  const markerPath = path.join(dir, ".updater-platform");
+  const markerPath = path.join(dir, PLATFORM_MARKER);
   if (!fs.existsSync(markerPath)) continue;
 
   const platform = fs.readFileSync(markerPath, "utf8").trim();
