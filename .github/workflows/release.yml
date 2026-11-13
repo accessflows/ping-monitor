@@ -202,6 +202,25 @@ jobs:
         with:
           version: 10.33.2
 
+      - name: Collect release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          # GitHub rewrites spaces in asset names, which would break the URLs written
+          # into latest.json. Normalise them here so the manifest and the release agree.
+          find artifacts -type f -print0 | while IFS= read -r -d '' file; do
+            dir=$(dirname "$file")
+            base=$(basename "$file")
+            safe="${base// /.}"
+            if [ "$base" != "$safe" ]; then
+              mv "$file" "$dir/$safe"
+            fi
+          done
+
+          mkdir -p release-assets
+          find artifacts -type f ! -name 'updater-platform.txt' -exec cp {} release-assets/ \;
+          ls -la release-assets
+
       - name: Build latest.json
         env:
           VERSION: ${{ needs.validate.outputs.version }}
@@ -209,15 +228,6 @@ jobs:
           TAG: ${{ needs.validate.outputs.tag }}
           NOTES: ${{ inputs.notes }}
         run: node scripts/build-latest-json.mjs
-
-      - name: Collect release assets
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p release-assets
-          find artifacts -type f ! -name 'updater-platform.txt' -exec cp {} release-assets/ \;
-          cp latest.json release-assets/latest.json
-          ls -la release-assets
 
       - name: Publish GitHub Release
         env:
@@ -235,6 +245,15 @@ jobs:
           else
             prerelease=(--latest)
           fi
+
+          cp latest.json release-assets/latest.json
+
+          # Re-running the same version rebuilds the release from scratch.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Replacing existing release $TAG"
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          fi
+
           gh release create "$TAG" \
             --title "Ping Monitor $VERSION" \
             --notes "$body" \
