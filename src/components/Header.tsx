@@ -1,6 +1,7 @@
-import { Download, Plus, Settings, Signal } from "lucide-react";
+import { Download, Loader2, Plus, RefreshCw, Settings, Signal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { StatusCounts } from "../hooks/useMonitor";
+import type { UpdaterApi } from "../hooks/useUpdater";
 import { useTheme } from "../lib/theme";
 import type { Status } from "../types";
 import { GhostButton, IconButton, MONO, PrimaryButton, SummaryBadge } from "./ui-bits";
@@ -8,6 +9,7 @@ import { GhostButton, IconButton, MONO, PrimaryButton, SummaryBadge } from "./ui
 interface HeaderProps {
   stats: StatusCounts;
   simulation: boolean;
+  updater: UpdaterApi;
   onAdd: () => void;
   onSettings: () => void;
   onExport: () => void;
@@ -23,7 +25,7 @@ const BADGES: { key: Status; tone: "good" | "warn" | "bad" | "pending"; label: s
 /** 0 = everything visible, 1 = compact badges, 2 = badges hidden. */
 type Density = 0 | 1 | 2;
 
-export function Header({ stats, simulation, onAdd, onSettings, onExport }: HeaderProps) {
+export function Header({ stats, simulation, updater, onAdd, onSettings, onExport }: HeaderProps) {
   const T = useTheme();
   const headerRef = useRef<HTMLElement>(null);
   const [density, setDensity] = useState<Density>(0);
@@ -54,7 +56,18 @@ export function Header({ stats, simulation, onAdd, onSettings, onExport }: Heade
           <span className="font-semibold text-sm" style={{ color: T.text, letterSpacing: "0.04em" }}>
             NetPulse
           </span>
+          {updater.currentVersion && (
+            <span
+              className="px-1.5 py-0.5 rounded"
+              style={{ backgroundColor: T.panelHover, color: T.textMuted, fontFamily: MONO, fontSize: 10 }}
+              title={`Ping Monitor v${updater.currentVersion}`}
+            >
+              v{updater.currentVersion}
+            </span>
+          )}
         </div>
+
+        <UpdateBadge updater={updater} />
 
         <div
           className="flex items-center gap-1.5 shrink-0"
@@ -105,5 +118,38 @@ export function Header({ stats, simulation, onAdd, onSettings, onExport }: Heade
         </PrimaryButton>
       </div>
     </header>
+  );
+}
+
+function UpdateBadge({ updater }: { updater: UpdaterApi }) {
+  const T = useTheme();
+  const { status, update, progress, install } = updater;
+
+  if (status === "downloading") {
+    return (
+      <div
+        className="flex items-center gap-1.5 px-2 py-1 rounded-lg shrink-0"
+        style={{ backgroundColor: T.panelHover, color: T.accent, fontFamily: MONO, fontSize: 10 }}
+        title="Downloading update"
+      >
+        <Loader2 size={11} className="animate-spin" />
+        {progress === null ? "Installing…" : `${progress}%`}
+      </div>
+    );
+  }
+
+  if (status !== "available" || !update) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => void install()}
+      className="flex items-center gap-1.5 px-2 py-1 rounded-lg shrink-0 transition-opacity hover:opacity-85"
+      style={{ backgroundColor: T.accent, color: T.accentText, fontFamily: MONO, fontSize: 10, fontWeight: 600 }}
+      title={`Update v${update.version} is ready — click to install and restart`}
+    >
+      <RefreshCw size={11} />
+      Update v{update.version}
+    </button>
   );
 }

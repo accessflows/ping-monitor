@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 
 use base64::Engine;
 use serde::Serialize;
+use tauri::Manager;
 
 /// Result of a single ICMP echo probe. Serialized camelCase for the webview.
 #[derive(Debug, Serialize)]
@@ -97,6 +98,16 @@ async fn save_pdf(default_name: String, data_base64: String) -> Result<Option<St
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .setup(|app| {
+            // The window title carries the running version so users can tell builds apart.
+            let version = app.package_info().version.to_string();
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_title(&format!("NetPulse · Ping Monitor v{version}"));
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![ping_host, save_pdf])
         .run(tauri::generate_context!())
         .expect("error while running Ping Monitor");

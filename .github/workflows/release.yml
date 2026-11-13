@@ -1,0 +1,232 @@
+name: Release
+
+# Manual release build: one binary per OS/CPU pair.
+# `version` is only injected at build time (tauri --config), so the repository
+# files keep the version they were committed with.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, without the v prefix (e.g. 0.2.0 or 0.2.0-beta.1)"
+        required: true
+        type: string
+      publish_release:
+        description: "Create the GitHub Release with installers and latest.json (required for auto-update)"
+        required: true
+        type: boolean
+        default: true
+      notes:
+        description: "Release notes (optional)"
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    name: Validate version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - id: check
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="${VERSION#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid version '$version'. Expected MAJOR.MINOR.PATCH, optionally with -prerelease."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.artifact }}
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+            updater_platform: windows-x86_64
+          - artifact: windows-arm64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            bundles: nsis
+            updater_platform: windows-aarch64
+          - artifact: macos-x64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            bundles: app,dmg
+            updater_platform: darwin-x86_64
+          - artifact: macos-arm64
+            os: macos-15
+            target: aarch64-apple-darwin
+            bundles: app,dmg
+            updater_platform: darwin-aarch64
+          - artifact: linux-x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage,deb
+            updater_platform: linux-x86_64
+          - artifact: linux-arm64
+            os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            bundles: appimage,deb
+            updater_platform: linux-aarch64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf build-essential libssl-dev
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ matrix.target }}
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Write version override
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: printf '{"version":"%s"}\n' "$VERSION" > version-override.json
+
+      - name: Build bundles
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APP_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          pnpm tauri build \
+            --target "${{ matrix.target }}" \
+            --bundles "${{ matrix.bundles }}" \
+            --config version-override.json
+
+      - name: Collect artifacts
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          ARTIFACT: ${{ matrix.artifact }}
+          UPDATER_PLATFORM: ${{ matrix.updater_platform }}
+        run: |
+          set -euo pipefail
+          bundle_dir="src-tauri/target/${{ matrix.target }}/release/bundle"
+          out="dist-artifacts/$ARTIFACT"
+          mkdir -p "$out"
+
+          # Installers and their updater signatures, flattened into one folder.
+          find "$bundle_dir" -type f \( \
+              -name '*.exe' -o -name '*.exe.sig' -o \
+              -name '*.msi' -o -name '*.msi.sig' -o \
+              -name '*.dmg' -o \
+              -name '*.AppImage' -o -name '*.AppImage.tar.gz' -o -name '*.AppImage.tar.gz.sig' -o \
+              -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' -o \
+              -name '*.deb' \) -print0 | while IFS= read -r -d '' file; do
+            cp "$file" "$out/"
+          done
+
+          # Record which updater platform key this build feeds into latest.json.
+          echo "$UPDATER_PLATFORM" > "$out/.updater-platform"
+          echo "Artifacts for $ARTIFACT:"
+          ls -la "$out"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist-artifacts/${{ matrix.artifact }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish release
+    needs: [validate, build]
+    if: ${{ inputs.publish_release && success() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - name: Build latest.json
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          NOTES: ${{ inputs.notes }}
+        run: node scripts/build-latest-json.mjs
+
+      - name: Collect release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find artifacts -type f ! -name '.updater-platform' -exec cp {} release-assets/ \;
+          cp latest.json release-assets/latest.json
+          ls -la release-assets
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          NOTES: ${{ inputs.notes }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="${NOTES:-Ping Monitor $VERSION}"
+          prerelease=()
+          if [[ "$VERSION" == *-* ]]; then
+            prerelease=(--prerelease)
+          else
+            prerelease=(--latest)
+          fi
+          gh release create "$TAG" \
+            --title "Ping Monitor $VERSION" \
+            --notes "$body" \
+            "${prerelease[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            release-assets/*

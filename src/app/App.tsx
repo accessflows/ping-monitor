@@ -8,6 +8,7 @@ import { Header } from "../components/Header";
 import { SettingsModal } from "../components/SettingsModal";
 import { PrimaryButton } from "../components/ui-bits";
 import { useMonitor, type MonitorApi } from "../hooks/useMonitor";
+import { useUpdater, type UpdaterApi } from "../hooks/useUpdater";
 import { ThemeProvider, useTheme, withAlpha } from "../lib/theme";
 import type { ModalType } from "../types";
 
@@ -16,6 +17,7 @@ const ExportModal = lazy(() => import("../components/ExportModal").then((module)
 
 export default function App() {
   const monitor = useMonitor();
+  const updater = useUpdater();
   const theme = monitor.settings.theme;
 
   useEffect(() => {
@@ -25,12 +27,12 @@ export default function App() {
   return (
     <ThemeProvider mode={theme}>
       <Toaster theme={theme} position="top-right" closeButton richColors />
-      <Dashboard monitor={monitor} />
+      <Dashboard monitor={monitor} updater={updater} />
     </ThemeProvider>
   );
 }
 
-function Dashboard({ monitor }: { monitor: MonitorApi }) {
+function Dashboard({ monitor, updater }: { monitor: MonitorApi; updater: UpdaterApi }) {
   const T = useTheme();
   const [modal, setModal] = useState<ModalType>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -67,6 +69,7 @@ function Dashboard({ monitor }: { monitor: MonitorApi }) {
       <Header
         stats={monitor.stats}
         simulation={monitor.simulation}
+        updater={updater}
         onAdd={() => setModal("add")}
         onSettings={() => setModal("settings")}
         onExport={() => setModal("export")}
@@ -98,6 +101,7 @@ function Dashboard({ monitor }: { monitor: MonitorApi }) {
       {modal === "settings" && (
         <SettingsModal
           settings={monitor.settings}
+          updater={updater}
           onSave={monitor.updateSettings}
           onClearHistory={monitor.clearHistory}
           onClose={() => setModal(null)}

@@ -1,6 +1,7 @@
-import { Loader2, RotateCcw, Trash2 } from "lucide-react";
+import { Loader2, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import type { UpdaterApi } from "../hooks/useUpdater";
 import { DEFAULT_SETTINGS, PING_INTERVALS, RETENTION_OPTIONS, TIMEOUT_OPTIONS } from "../lib/constants";
 import { useTheme } from "../lib/theme";
 import type { AppSettings, ThemeMode } from "../types";
@@ -9,12 +10,13 @@ import { Chip, GhostButton, ModalCard, ModalFooter, ModalHeader, MONO, PrimaryBu
 
 interface SettingsModalProps {
   settings: AppSettings;
+  updater: UpdaterApi;
   onSave: (next: AppSettings) => Promise<void>;
   onClearHistory: () => Promise<void>;
   onClose: () => void;
 }
 
-export function SettingsModal({ settings, onSave, onClearHistory, onClose }: SettingsModalProps) {
+export function SettingsModal({ settings, updater, onSave, onClearHistory, onClose }: SettingsModalProps) {
   const T = useTheme();
   const [draft, setDraft] = useState<AppSettings>(settings);
   const [saving, setSaving] = useState(false);
@@ -189,6 +191,8 @@ export function SettingsModal({ settings, onSave, onClearHistory, onClose }: Set
               ))}
             </div>
           </section>
+
+          <UpdateSection updater={updater} />
         </div>
 
         <ModalFooter>
@@ -216,6 +220,51 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     <h3 className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: T.textFaint, fontFamily: MONO }}>
       {children}
     </h3>
+  );
+}
+
+function UpdateSection({ updater }: { updater: UpdaterApi }) {
+  const T = useTheme();
+  const { status, currentVersion, update, progress, error, check, install } = updater;
+  const busy = status === "checking" || status === "downloading";
+
+  const statusText = (() => {
+    if (status === "unsupported") return "Update checks are only available in the desktop app.";
+    if (status === "checking") return "Checking for updates…";
+    if (status === "downloading") return progress === null ? "Downloading and installing…" : `Downloading… ${progress}%`;
+    if (status === "available") return `Version ${update?.version ?? ""} is available.`;
+    if (status === "up-to-date") return "You are running the latest version.";
+    if (status === "error") return error ?? "Could not check for updates.";
+    return "Ping Monitor checks GitHub Releases at startup.";
+  })();
+
+  return (
+    <section className="flex flex-col gap-3 pb-1">
+      <SectionTitle>About &amp; updates</SectionTitle>
+      <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3" style={{ backgroundColor: T.panelAlt }}>
+        <div className="min-w-0">
+          <div className="text-xs font-medium" style={{ color: T.text, fontFamily: MONO }}>
+            Ping Monitor v{currentVersion || "—"}
+          </div>
+          <div className="text-[11px] mt-0.5" style={{ color: status === "error" ? T.bad : T.textMuted }}>
+            {statusText}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {status === "available" ? (
+            <PrimaryButton onClick={() => void install()} disabled={busy}>
+              <RefreshCw size={13} />
+              Install v{update?.version}
+            </PrimaryButton>
+          ) : (
+            <GhostButton onClick={() => void check()} disabled={busy} className="flex items-center gap-1.5">
+              {status === "checking" ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              Check
+            </GhostButton>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
