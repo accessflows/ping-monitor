@@ -98,7 +98,13 @@ gh secret set TAURI_SIGNING_PRIVATE_KEY --body "$(cat ~/.tauri/ping-monitor.key)
 # paste the contents of ~/.tauri/ping-monitor.key.pub into plugins.updater.pubkey
 ```
 
-Losing the private key means already-installed apps can no longer auto-update.
+Losing the private key means already-installed apps can no longer auto-update. A local copy of the
+current key pair is kept outside the repository at `~/.tauri/ping-monitor.key` and
+`~/.tauri/ping-monitor.key.pub`.
+
+The app reads `https://github.com/accessflows/ping-monitor/releases/latest/download/latest.json`, so
+the repository must stay public (or the manifest must be mirrored to a public URL) for updates to
+work without shipping a token.
 
 ## How it works
 

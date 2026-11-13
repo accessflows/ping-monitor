@@ -198,10 +198,6 @@ jobs:
         with:
           path: artifacts
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.33.2
-
       - name: Collect release assets
         shell: bash
         run: |
