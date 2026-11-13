@@ -24,7 +24,8 @@ if (!VERSION || !REPOSITORY || !TAG) {
 const UPDATER_ASSET = {
   windows: (name) => name.endsWith("-setup.exe"),
   darwin: (name) => name.endsWith(".app.tar.gz"),
-  linux: (name) => name.endsWith(".AppImage.tar.gz"),
+  // Tauri v2 signs the AppImage itself; older builds used a tarball.
+  linux: (name) => name.endsWith(".AppImage") || name.endsWith(".AppImage.tar.gz"),
 };
 
 const findPlatformDirs = () => {

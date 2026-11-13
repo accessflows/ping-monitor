@@ -157,11 +157,21 @@ jobs:
               -name '*.exe' -o -name '*.exe.sig' -o \
               -name '*.msi' -o -name '*.msi.sig' -o \
               -name '*.dmg' -o \
-              -name '*.AppImage' -o -name '*.AppImage.tar.gz' -o -name '*.AppImage.tar.gz.sig' -o \
+              -name '*.AppImage' -o -name '*.AppImage.sig' -o \
+              -name '*.AppImage.tar.gz' -o -name '*.AppImage.tar.gz.sig' -o \
               -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' -o \
               -name '*.deb' \) -print0 | while IFS= read -r -d '' file; do
             cp "$file" "$out/"
           done
+
+          # The macOS updater archive is not architecture-tagged by Tauri, so the Intel
+          # and Apple Silicon releases would otherwise overwrite each other.
+          macos_archive="$out/Ping Monitor.app.tar.gz"
+          if [[ -f "$macos_archive" ]]; then
+            renamed="Ping Monitor_${VERSION}_${ARTIFACT}.app.tar.gz"
+            mv "$macos_archive" "$out/$renamed"
+            [[ -f "$macos_archive.sig" ]] && mv "$macos_archive.sig" "$out/$renamed.sig"
+          fi
 
           # Record which updater platform key this build feeds into latest.json.
           echo "$UPDATER_PLATFORM" > "$out/.updater-platform"
